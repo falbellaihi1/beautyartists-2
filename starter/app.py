@@ -42,6 +42,10 @@ def create_app(test_config=None):  # create app
             or appropriate status code indicating reason for failure
     '''
 
+    @app.route("/")
+    def home_view():
+        return "<h1>Wlecome to Hairstylists reviews</h1>"
+
 
     @app.route('/stylists', methods=['GET'])
     def get_stylists():  # public get stylist, requires no permission, it retrieves all stylists in short format
