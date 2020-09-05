@@ -28,10 +28,14 @@ def setup_db(app, database_path=database_path):
     db.create_all()
 
 
-'''
-Question
+def db_drop_and_create_all():
+    db.drop_all()
+    db.create_all()
+def create_db():
+    db.create_all()
 
-'''
+class Stylist(db.Model):
+    id = Column(Integer, primary_key=True)
 
 
 
