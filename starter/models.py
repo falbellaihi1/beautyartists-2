@@ -3,9 +3,11 @@ import os
 from sqlalchemy import Column, String, Integer, create_engine
 from flask_sqlalchemy import SQLAlchemy
 import json
-
+import os
 database_name = "hairstylist_api"
-database_path = "postgresql://{}:{}@{}/{}".format('postgres', '0000', 'localhost:5432', database_name)
+DBUSER = os.environ.get('DBUSER')
+DBPASS = os.environ.get('DBPASS')
+database_path = "postgresql://{}:{}@{}/{}".format(DBUSER, DBPASS, 'localhost:5432', database_name)
 # database_path = "postgresql://postgres:0000@{}/{}".format('localhost:5432', database_name)
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
