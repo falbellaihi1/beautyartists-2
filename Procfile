@@ -1,1 +1,2 @@
-web: gunicorn "starter:create_app()"
+cd starter
+gunicorn "app:create_app()"
