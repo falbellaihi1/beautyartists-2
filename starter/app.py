@@ -11,7 +11,7 @@ from functools import wraps
 
 def create_app(test_config=None):  # create app
     app = Flask(__name__)
-    setup_db(app)
+    #setup_db(app)
     # CORS(app)
     CORS(app, resources={r"/api/*": {"origins": "*"}})
     '''
@@ -228,5 +228,5 @@ def create_app(test_config=None):  # create app
     return app
 
 
-if __name__ == "__main__":
-    create_app().run()
+# if __name__ == "__main__":
+#     create_app().run()
