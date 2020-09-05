@@ -20,7 +20,7 @@ def create_app(test_config=None):  # create app
     !! NOTE THIS MUST BE UNCOMMENTED ON FIRST RUN
     '''
     #db_drop_and_create_all()
-    create_db()
+    #create_db()
     @app.after_request
     def after_request(response):  # after request header decorators
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
