@@ -1,17 +1,11 @@
-import os
-from flask import Flask, request, jsonify, abort
-from pip._vendor import requests
-from sqlalchemy import exc
-import json
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-from .models import setup_db, db_drop_and_create_all, create_db, Stylist
-
-from functools import wraps
+from backend.src.models import setup_db, db_drop_and_create_all, Stylist, Rating, db
 
 
 def create_app(test_config=None):  # create app
     app = Flask(__name__)
-    #setup_db(app)
+    setup_db(app)
     # CORS(app)
     CORS(app, resources={r"/api/*": {"origins": "*"}})
     '''
@@ -19,7 +13,7 @@ def create_app(test_config=None):  # create app
     !! NOTE THIS WILL DROP ALL RECORDS AND START YOUR DB FROM SCRATCH
     !! NOTE THIS MUST BE UNCOMMENTED ON FIRST RUN
     '''
-    #db_drop_and_create_all()
+    db_drop_and_create_all()
     #create_db()
     @app.after_request
     def after_request(response):  # after request header decorators
@@ -42,59 +36,76 @@ def create_app(test_config=None):  # create app
             or appropriate status code indicating reason for failure
     '''
 
+    #
+    # def get_rated_stylists_helper():
+    #     data = []
+    #
+    #     rates = db.session.query(Rating).join(Stylist).all()
+    #     print(rates)
+
+
     @app.route("/")
     def home_view():
         return "<h1>Wlecome to Hairstylists reviews</h1>"
 
 
-    @app.route('/stylists', methods=['GET'])
-    def get_stylists():  # public get stylist, requires no permission, it retrieves all stylists in short format
-
+    @app.route('/stylist', methods=['GET'])
+    def get_stylists():  # public get stylist, requires no permission, it retrieves all stylists and rating
+        stylists = [stylist.format() for stylist in Stylist.query.all()]
+        rates = db.session.query(Stylist, Rating).join(Rating, Rating.stylist_id == Stylist.id).all()
         return jsonify(
             {
-                "sucess":True,
-                "message":"Getting list"
+                "success":True,
+                "stylists":stylists,
+                "total_stylists":len(stylists)
             }
         )
 
-    '''
-    @TODO implement endpoint     
-        GET /stylists-detail
-            it should require the 'get:stylists-detail' permission
-            it should contain the stylist.long() data representation
-        returns status code 200 and json {"success": True, "stylist": stylists} where stylists is the list of stylists
-            or appropriate status code indicating reason for failure
-    '''
-
-    @app.route('/stylists-detail',
-               methods=['GET'])  
-    #@requires_auth('get:stylists-detail')
-    def detail_stylists(playload):
-        try:
-
-            stylists = Stylist.query.all()
-            if stylists:
-                long_stylists = [stylist.long() for stylist in stylists]
-            else:
-                long_stylists = []
-            return jsonify({"success": True, "stylists": long_stylists})
-        except:
-            abort(401)
 
     '''
     @TODO implement endpoint      'DONE'
         POST /stylists
             it should create a new row in the stylists table
             it should require the 'post:stylists' permission
-            it should contain the stylist.long() data representation
         returns status code 200 and json {"success": True, "stylists": stylist} where stylist an array containing only the newly created stylist
             or appropriate status code indicating reason for failure
     '''
 
-    @app.route('/stylists', methods=['POST'])
+    @app.route('/stylist', methods=['POST'])
     #@requires_auth('post:stylists')
-    def add_stylists(payload):
-        return 'None'
+    def add_stylists():
+        # if ((request.json.get('name') == '') | (request.json.get('speciality') == '') :
+        #     return abort(422)
+        new_stylist = Stylist(name=request.json.get('name'),
+                              speciality=request.json.get('speciality'),
+                              image_link=request.json.get('image_link'))
+        Stylist.insert(new_stylist)
+
+        stylists =[stylist.format() for stylist in Stylist.query.all()]
+
+
+        return jsonify({
+            "success":True,
+            "Stylist":stylists
+        })
+
+
+
+
+
+    @app.route('/rating', methods=['POST'])
+    #@requires_auth('post:stylists')
+    def rate_stylists():
+
+        print(request.json.get('comment'))
+        new_rating = Rating(rate=request.json.get('rate'), stylist_id=request.json.get('stylist_id'),comment=request.json.get('comment') )
+        Rating.insert(new_rating)
+        ratings = [rate.format() for rate in Rating.query.all()]
+
+        return jsonify({
+            "success": True,
+            "ratings": ratings
+        })
 
 
     '''
@@ -104,7 +115,7 @@ def create_app(test_config=None):  # create app
             it should respond with a 404 error if <id> is not found
             it should update the corresponding row for <id>
             it should require the 'patch:stylists' permission
-            it should contain the stylist.long() data representation
+            it should contain the stylist data representation
         returns status code 200 and json {"success": True, "stylists": stylist} where stylist an array containing only the updated stylist
             or appropriate status code indicating reason for failure
     '''
@@ -228,5 +239,5 @@ def create_app(test_config=None):  # create app
     return app
 
 
-# if __name__ == "__main__":
-#     create_app().run()
+if __name__ == "__main__":
+    create_app().run()
