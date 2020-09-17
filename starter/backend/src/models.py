@@ -43,7 +43,7 @@ class Artist(db.Model):
     auth_user_id = Column(String)
     email = Column(String)
     rating = db.relationship('Rating', backref='stylist', cascade="all, delete, delete-orphan",lazy=True)
-    def __init__(self, name, speciality='', auth_user_id='', email=''):
+    def __init__(self, name, email, speciality='', auth_user_id=''):
         self.name = name
         self.speciality = speciality
         self.auth_user_id = auth_user_id

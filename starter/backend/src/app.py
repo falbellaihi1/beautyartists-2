@@ -51,20 +51,14 @@ def create_app(test_config=None):  # create app
         data_loads = json.loads(data)
         token = data_loads['access_token']
         return token
+    def retrieve_customers():
+        return [customer.format() for customer in Customer.query.all()]
 
-    def user_info_helper(
-            playload):  # retrieves more user info from api using user id, this will help in getting user metadata from auth0, not sure if this is best practice!
-        """:returns tuple [0] == email, [1]==name , [2] == user_id, [3] == picture"""
-        auth = management_api_token()
-        header = {'authorization': 'Bearer {}'.format(auth)}
-        user_id = playload['sub']
-        conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
-        conn.request("GET", "/api/v2/users/{}".format(user_id), headers=header)
-        res = conn.getresponse()
-        data = res.read()
-        # print('data',data)
-        resp = json.loads(data)
-        return resp['email'], resp['name'], resp['user_id'], resp['picture']
+    def retrieve_artists():
+        return [artist.format() for artist in Artist.query.all()]
+
+    ####################################
+
 
     def assign_role(role, uid):  # TODO GET ROLE ID FROM AUTH0 TO ASSIGN IT TO USER
         print(role)
@@ -73,7 +67,7 @@ def create_app(test_config=None):  # create app
         conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
         ########## read existing roles in auth0 ########
         conn.request("GET", "/api/v2/roles", headers=headers)
-        existing_roles_response = conn.getresponse();
+        existing_roles_response = conn.getresponse()
         read_response = existing_roles_response.read()
         existing_roles = json.loads(read_response.decode("utf-8"))
 
@@ -97,24 +91,9 @@ def create_app(test_config=None):  # create app
                     data = res.read()
                     print(data.decode("utf-8"))
 
-        # headers = {'authorization': 'Bearer {}'.format(auth)}
-        # if (role == 'customer'):
-        #
-        # elif (role == 'artist'):
-        #     print('artist')
-        #     # payload = "{ \"roles\": [ \"ROLE_ID\", \"ROLE_ID\" ] }"
-        # conn.request("POST", "/YOUR_DOMAIN/api/v2/users/USER_ID/roles", payload, headers)
-        # res = conn.getresponse()
-        # data = res.read()
-        # print(data.decode("utf-8"))
 
-    def retrieve_customers():
-        return [customer.format() for customer in Customer.query.all()]
 
-    def retrieve_artists():
-        return [artist.format() for artist in Artist.query.all()]
 
-    ####################################
     '''
     @TODO implement endpoint     'DONE'
         GET /stylists
@@ -135,22 +114,7 @@ def create_app(test_config=None):  # create app
     def home_view():
         return "<h1>Wlecome to Hairstylists reviews</h1>"
 
-    # @app.route('/artists', methods=['GET'])
-    # def get_artists():  # public get stylist, requires no permission, it retrieves all stylists and rating
-    #     try:
-    #         artist = [artist.format() for artist in Artist.query.all()]
-    #         rates = db.session.query(Artist, Rating).join(Rating, Rating.stylist_id == Artist.id).all()
-    #         print(rates)
-    #         return jsonify(
-    #             {
-    #                 "success": True,
-    #                 "stylists": artist,
-    #                 "total_stylists": len(artist)
-    #             }
-    #         )
-    #     except Exception as e:
-    #         print(e)
-    #         abort(404)
+
 
     '''
     @TODO implement endpoint      'DONE'
@@ -176,25 +140,23 @@ def create_app(test_config=None):  # create app
     # @requires_auth('post:stylists')
     @is_authenticated()
     def create_artist(playload):
-        print(request.json.get('authuid'))
-
         get_artist = retrieve_artists()
-        print('1')
         if ((request.json.get('speciality') == '' or request.json.get('name') == '' and request.json.get(
                 'speciality') == '' and request.json.get('image_link') == '')):  # nothing passed abort 422
-            print('2')
             abort(422)
 
         try:
             if (len(get_artist) > 0):
-                print('4')
                 if get_artist[0]['email'] == request.json.get('email') or get_artist[0]['auth_user_id'] == request.json.get('authuid'):
                     #IMPORTANT if user already has record in db return user info json
-                    print('passing')
+                    query_artists = Artist.query.filter(Artist.auth_user_id == request.json.get('email')).one_or_none()
+                    return jsonify({
+                        "success":True,
+                        "artist":query_artists.format()
+                    })
 
             else:  # else if user does not have record create a record of the user
                 # assign_role(request.json.get('role'))
-                print('5')
                 new_artist = Artist(
                     name=request.json.get('name'),
                     email=request.json.get('email'),
@@ -217,28 +179,21 @@ def create_app(test_config=None):  # create app
     @app.route('/customer', methods=['POST'])
     @is_authenticated()
     def create_customer(playload):  # CUSTOMER ID NEEDS TO BE PASSED HERE,
-        role_namespace = playload['http://localhost:8100/roles']
-        info_namespace = playload['http://localhost:8100/info']  # rule created on auth0 to pass user info in the token
         # IMPORTANT encrypt jwt in auth0 rule
 
-        auth_uid = playload['sub']
-        assign_role(role='customer', uid=request.json.get('authuid') )
         print("role is ", request.json)
         get_customer = retrieve_customers()
         try:
             if (len(get_customer) > 0):  # check if user already exists in db
 
-                if get_customer[0]['email'] == info_namespace[0] or get_customer[0]['auth_user_id'] == auth_uid:
+                if get_customer[0]['email'] == request.json.get('email') or get_customer[0]['auth_user_id'] == request.json.get('authuid'):
                     # if user already has record in db
-                    print('pass')
                     query_customer = Customer.query.filter(Customer.auth_user_id == playload['sub']).one_or_none()
                     return jsonify({
                         "success": True,
                         "customer": [query_customer.format()]
                     })
             else:  # else if user does not have record create a record of the user
-                # assign_role(request.json.get('role'))
-                # IMPORTANT customer user role needs to be assigned here using auth management api
                 new_customer = Customer(
                     name=request.json.get('name'),
                     email=request.json.get('email'),
@@ -247,8 +202,8 @@ def create_app(test_config=None):  # create app
                 )
                 # registering using frontend, complete the user info from playload
                 Customer.insert(new_customer)
-
-                query_customer = Customer.query.filter(Customer.auth_user_id == playload['sub']).one_or_none()
+                assign_role(role='customer', uid=new_customer.auth_user_id)
+                query_customer = Customer.query.filter(Customer.id == new_customer.id).one_or_none()
                 return jsonify({
                     "success": True,
                     "customer": [query_customer.format()]

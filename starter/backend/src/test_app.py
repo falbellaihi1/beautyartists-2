@@ -8,6 +8,10 @@ from .app import  create_app
 from .models import  setup_db, Customer, Rating, Artist
 
 
+def get_headers():
+    pass
+
+
 class BeautyTestCase(unittest.TestCase):
     """This class represents the trivia test case"""
 
@@ -52,132 +56,69 @@ class BeautyTestCase(unittest.TestCase):
 
     def test_create_artist(self):
         """Testing create question, if sucess, a question should be created in db"""
-        res = self.client().post('/artist', json=self.artist)
+        res = self.client().post('/artist', json=self.artist, headers=get_headers())
         data = json.loads(res.data)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(data['success'], True)
         self.assertTrue(data['created'])
 
-    def test_search_question(self):
+    def test_create_customer(self):
         """TEST Case for searching for a question, it will return 200 if success"""
-        res = self.client().post('/questions/search', json={"searchTerm":"Who"})
+        res = self.client().post('/customer',self.customer, headers=get_headers())
         data = json.loads(res.data)
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(data['success'],True)
-        self.assertTrue(len(data['questions'])),
-        self.assertTrue(data['total_questions'])
-        self.assertTrue(data['current_category'])
+        self.assertEqual(data['success'], True)
+        self.assertTrue(data['created'])
 
 
 
-    def test_get_questions(self):
+    def test_get_artists(self):
         """Testing Get Question method, this test should retrieve all questions in db, if suceess it will return 200"""
-        res = self.client().get('/questions')
+        res = self.client().get('/artists', get_headers())
         data = json.loads(res.data)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(data['success'], True)
-        self.assertTrue(data['questions'])
-        self.assertTrue(data['total_questions'])
-        self.assertTrue(data['categories'])
-        self.assertTrue(data['current_category'])
+        self.assertTrue(data['artist'])
 
-    def test_get_questions_paginated(self):
+    def test_get_customer(self):
         """Testing Get Question method, this test should retrieve all questions in db, if suceess it will return 200"""
-        res = self.client().get('/questions?=1')
+        res = self.client().get('/customer', get_headers())
         data = json.loads(res.data)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(data['success'], True)
-        self.assertTrue(data['questions'])
-        self.assertTrue(data['total_questions'])
-        self.assertTrue(data['categories'])
-        self.assertTrue(data['current_category'])
+        self.assertTrue(data['customer'])
 
-
-    def test_get_categories(self):
-        """Testing Get Categories method, this test should retreive all Categories in db, if suceess it will return 200"""
-        res = self.client().get('/categories')
-        data = json.loads(res.data)
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(data['success'], True)
-        self.assertTrue(data['total_categories'])
-        self.assertTrue(data['categories'])
-
-    def test_get_question_by_category(self):
-        """Testing Get Question by category method, this test should retreive all questions in choosen category in db, if suceess it will return 200"""
-        res = self.client().get('/categories/1/questions')
-        data = json.loads(res.data)
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(data['success'], True)
-        self.assertTrue(data['questions'])
-        self.assertTrue(data['total_questions'])
-        self.assertTrue(data['current_category'])
+#IMPORTANT GET REVIEWS TEST
 
 
 
-    def test_delete_question(self):
+
+    def test_delete_artist(self):
         """Testing Get Question method, this test should retreive all questions in db, if suceess it will return 200"""
-        res = self.client().delete('/questions/24')
+        res = self.client().delete('/artist/24')
 
         data = json.loads(res.data)
-        question = Question.query.filter(Question.id == 24).one_or_none()
+        artist = Artist.query.filter(Artist.id == 24).one_or_none()
         self.assertEqual(res.status_code, 200)
         self.assertEqual(data['success'], True)
         self.assertTrue(data['deleted'])
-        self.assertEqual(question,None)
+        self.assertEqual(artist,None)
 
 
-    def test_play(self):
-        """Testing Play quiz method, takes previous question and category , this test should check for previous questions and retrieve random it will return the question and success"""
-
-        res = self.client().post('/quizzes?category=1', json=self.previous)
-        data = json.loads(res.data)
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(data['success'], True)
-        self.assertTrue(data['question'])
-
-    def test_404_get_pegnatied(self):
-        """Testing Get Question method, this test should retrieve all questions in db, if suceess it will return 200"""
-        res = self.client().get('/questions?page=1000')
-        data = json.loads(res.data)
-        self.assertEqual(res.status_code, 404)
-        self.assertEqual(data['success'], False)
-        self.assertTrue(data['message'])
-
-
-
+    # def test_404_artist(self):
+    #     """Testing Get artist method, this test should retrieve all artists in db, if suceess it will return 200"""
+    #     res = self.client().get('/artist')
+    #     data = json.loads(res.data)
+    #     self.assertEqual(res.status_code, 404)
+    #     self.assertEqual(data['success'], False)
+    #     self.assertTrue(data['message'])
 
     def test_404_delete(self):
         """TEST case for 404 delete, if deletion is not sucessful it will retuen 404"""
-        res = self.client().delete('/questions/79oq83kljljlk09903284kejflkj')
+        res = self.client().delete('/artists/ssssddddwww')
 
         data = json.loads(res.data)
         self.assertEqual(res.status_code, 404)
-        self.assertEqual(data['success'], False)
-        self.assertTrue(data['message'])
-
-    def test_404_get_question_by_category(self):
-        """Test for get question by category if not sucessful it should return 404"""
-        res = self.client().get('/categories/sadqwdjmlkajwdfkjd/questions')
-        data = json.loads(res.data)
-        self.assertEqual(res.status_code, 404)
-        self.assertEqual(data['success'], False)
-        self.assertTrue(data['message'])
-
-    def test_404_search(self):
-        """TEST case for searching, it should return 404 if something is not found"""
-        res = self.client().post('/questions/search', json={"searchTerm":"dsjkahajdsajkwlkjdkjwiqureoiuo3uiurfkndjkhf"})
-        data = json.loads(res.data)
-        self.assertEqual(res.status_code, 404)
-        self.assertEqual(data['success'],False)
-        self.assertTrue(data['message'])
-
-
-    def test_422_create_question(self):
-        """Testing create question with empty value of one of the keys, it should return 422"""
-
-        res = self.client().post('/questions', json={"category":''})
-        data = json.loads(res.data)
-        self.assertEqual(res.status_code, 422)
         self.assertEqual(data['success'], False)
         self.assertTrue(data['message'])
 
