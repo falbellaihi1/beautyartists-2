@@ -51,17 +51,10 @@ def create_app(test_config=None):  # create app
             data = res.read()
             data_loads = json.loads(data)
             token = data_loads['access_token']
+            conn.close()
             return token
         except:
-            abort(404)
-    def retrieve_customers():
-        customers = Customer.query.all()
-        for customer in customers:
-            return customer.format()
-
-    def retrieve_artists():
-        return [artist.format() for artist in Artist.query.all()]
-
+            abort(401)
     ####################################
 
 
