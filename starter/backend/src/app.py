@@ -1,6 +1,11 @@
-from flask import Flask, request, jsonify
+import json
+import os
+
+from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
-from backend.src.models import setup_db, db_drop_and_create_all, Stylist, Rating, db
+from backend.src.models import setup_db, db_drop_and_create_all, Artist, Rating, db, Customer, create_db
+from .auth.auth import AuthError, requires_auth, is_authenticated
+import http.client
 
 
 def create_app(test_config=None):  # create app
@@ -13,8 +18,10 @@ def create_app(test_config=None):  # create app
     !! NOTE THIS WILL DROP ALL RECORDS AND START YOUR DB FROM SCRATCH
     !! NOTE THIS MUST BE UNCOMMENTED ON FIRST RUN
     '''
-    db_drop_and_create_all()
-    #create_db()
+    #db_drop_and_create_all()
+
+    create_db()
+
     @app.after_request
     def after_request(response):  # after request header decorators
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -22,9 +29,90 @@ def create_app(test_config=None):  # create app
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response
 
+    ## HELPERS
 
+    def management_api_token():  # retrieves management api token
+        print("trying..")
+        CLIENT_ID = os.environ.get('AUTH0_CLIENT_ID')
+        CLIENT_SEC = os.environ.get('AUTH0_CLIENT_SECRET')
+        conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
+        playload = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SEC,
+            "audience": "https://falbellaihi1.us.auth0.com/api/v2/",
+            "grant_type": "client_credentials"
+        }
+        playload_json = json.dumps(playload)
+        # print(playload_json)
+        headers = {'content-type': "application/json"}
+        conn.request("POST", "/oauth/token", playload_json, headers)
+        res = conn.getresponse()
+        data = res.read()
+        data_loads = json.loads(data)
+        token = data_loads['access_token']
+        return token
 
-    ## ROUTES
+    def user_info_helper(
+            playload):  # retrieves more user info from api using user id, this will help in getting user metadata from auth0, not sure if this is best practice!
+        """:returns tuple [0] == email, [1]==name , [2] == user_id, [3] == picture"""
+        auth = management_api_token()
+        header = {'authorization': 'Bearer {}'.format(auth)}
+        user_id = playload['sub']
+        conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
+        conn.request("GET", "/api/v2/users/{}".format(user_id), headers=header)
+        res = conn.getresponse()
+        data = res.read()
+        # print('data',data)
+        resp = json.loads(data)
+        return resp['email'], resp['name'], resp['user_id'], resp['picture']
+
+    def assign_role(role, uid):  # TODO GET ROLE ID FROM AUTH0 TO ASSIGN IT TO USER
+        print(role)
+        auth = management_api_token()
+        headers = {'content-type': "application/json",'authorization': 'Bearer {}'.format(auth), 'cache-control': "no-cache"}
+        conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
+        ########## read existing roles in auth0 ########
+        conn.request("GET", "/api/v2/roles", headers=headers)
+        existing_roles_response = conn.getresponse();
+        read_response = existing_roles_response.read()
+        existing_roles = json.loads(read_response.decode("utf-8"))
+
+        ####### read user current roles ######
+        conn.request("GET", "/api/v2/users/{}/roles".format(uid), headers=headers)
+        user_roles_res = conn.getresponse();
+        read_user_roles = user_roles_res.read()
+        json_user_roles = json.loads(read_user_roles.decode("utf-8"))
+        if(len(json_user_roles) > 0):
+            print( ' you already have roles ----> ' ,json_user_roles)
+        if (len(json_user_roles) == 0):
+            print('no roles, creating one now')
+            for i in range(len(existing_roles)):
+                if existing_roles[i]['name'] == role:
+                    print('assigning', existing_roles[i]['id'])
+                    payload = {
+                        "roles": [existing_roles[i]['id']]
+                    }
+                    conn.request("POST", "/api/v2/users/{}/roles".format(uid), json.dumps(payload) ,headers=headers)
+                    res = conn.getresponse()
+                    data = res.read()
+                    print(data.decode("utf-8"))
+
+        # headers = {'authorization': 'Bearer {}'.format(auth)}
+        # if (role == 'customer'):
+        #
+        # elif (role == 'artist'):
+        #     print('artist')
+        #     # payload = "{ \"roles\": [ \"ROLE_ID\", \"ROLE_ID\" ] }"
+        # conn.request("POST", "/YOUR_DOMAIN/api/v2/users/USER_ID/roles", payload, headers)
+        # res = conn.getresponse()
+        # data = res.read()
+        # print(data.decode("utf-8"))
+
+    def retrieve_customers():
+        return [customer.format() for customer in Customer.query.all()]
+
+    def retrieve_artists():
+        return [artist.format() for artist in Artist.query.all()]
 
     ####################################
     '''
@@ -43,24 +131,26 @@ def create_app(test_config=None):  # create app
     #     rates = db.session.query(Rating).join(Stylist).all()
     #     print(rates)
 
-
     @app.route("/")
     def home_view():
         return "<h1>Wlecome to Hairstylists reviews</h1>"
 
-
-    @app.route('/stylist', methods=['GET'])
-    def get_stylists():  # public get stylist, requires no permission, it retrieves all stylists and rating
-        stylists = [stylist.format() for stylist in Stylist.query.all()]
-        rates = db.session.query(Stylist, Rating).join(Rating, Rating.stylist_id == Stylist.id).all()
-        return jsonify(
-            {
-                "success":True,
-                "stylists":stylists,
-                "total_stylists":len(stylists)
-            }
-        )
-
+    # @app.route('/artists', methods=['GET'])
+    # def get_artists():  # public get stylist, requires no permission, it retrieves all stylists and rating
+    #     try:
+    #         artist = [artist.format() for artist in Artist.query.all()]
+    #         rates = db.session.query(Artist, Rating).join(Rating, Rating.stylist_id == Artist.id).all()
+    #         print(rates)
+    #         return jsonify(
+    #             {
+    #                 "success": True,
+    #                 "stylists": artist,
+    #                 "total_stylists": len(artist)
+    #             }
+    #         )
+    #     except Exception as e:
+    #         print(e)
+    #         abort(404)
 
     '''
     @TODO implement endpoint      'DONE'
@@ -71,42 +161,153 @@ def create_app(test_config=None):  # create app
             or appropriate status code indicating reason for failure
     '''
 
-    @app.route('/stylist', methods=['POST'])
-    #@requires_auth('post:stylists')
-    def add_stylists():
-        # if ((request.json.get('name') == '') | (request.json.get('speciality') == '') :
-        #     return abort(422)
-        new_stylist = Stylist(name=request.json.get('name'),
-                              speciality=request.json.get('speciality'),
-                              image_link=request.json.get('image_link'))
-        Stylist.insert(new_stylist)
+    @app.route('/artists/<int:id>/user', methods=['GET'])
+    def get_by_id_artists(id):  # public get stylist, requires no permission, it retrieves all stylists and rating
+        try:
+            artist = Artist.query.filter(Artist.id == id).one_or_none()
+            print(artist)
+            return jsonify({"success": True, "id": artist.format()})
+        except Exception as e:
+            print(e)
+            abort(404)
 
-        stylists =[stylist.format() for stylist in Stylist.query.all()]
+    @app.route('/artist', methods=['POST'])
+    # no need for authentication since the rule comes after the registeration!
+    # @requires_auth('post:stylists')
+    @is_authenticated()
+    def create_artist(playload):
+        print(request.json.get('authuid'))
+
+        get_artist = retrieve_artists()
+        print('1')
+        if ((request.json.get('speciality') == '' or request.json.get('name') == '' and request.json.get(
+                'speciality') == '' and request.json.get('image_link') == '')):  # nothing passed abort 422
+            print('2')
+            abort(422)
+
+        try:
+            if (len(get_artist) > 0):
+                print('4')
+                if get_artist[0]['email'] == request.json.get('email') or get_artist[0]['auth_user_id'] == request.json.get('authuid'):
+                    #IMPORTANT if user already has record in db return user info json
+                    print('passing')
+
+            else:  # else if user does not have record create a record of the user
+                # assign_role(request.json.get('role'))
+                print('5')
+                new_artist = Artist(
+                    name=request.json.get('name'),
+                    email=request.json.get('email'),
+                    auth_user_id=request.json.get('authuid'),
+                    speciality=request.json.get('speciality'))
+                Artist.insert(new_artist)
+
+            query_artists = Artist.query.filter(Artist.auth_user_id == playload['sub']).one_or_none()
+            print(query_artists)
+            assign_role('artist', request.json.get('authuid'))
+            return jsonify({
+                "success": True,
+                "artist": [query_artists.format()]
+            })
+
+        except Exception as e:
+            print(e)
+            abort(400)
+
+    @app.route('/customer', methods=['POST'])
+    @is_authenticated()
+    def create_customer(playload):  # CUSTOMER ID NEEDS TO BE PASSED HERE,
+        role_namespace = playload['http://localhost:8100/roles']
+        info_namespace = playload['http://localhost:8100/info']  # rule created on auth0 to pass user info in the token
+        # IMPORTANT encrypt jwt in auth0 rule
+
+        auth_uid = playload['sub']
+        assign_role(role='customer', uid=request.json.get('authuid') )
+        print("role is ", request.json)
+        get_customer = retrieve_customers()
+        try:
+            if (len(get_customer) > 0):  # check if user already exists in db
+
+                if get_customer[0]['email'] == info_namespace[0] or get_customer[0]['auth_user_id'] == auth_uid:
+                    # if user already has record in db
+                    print('pass')
+                    query_customer = Customer.query.filter(Customer.auth_user_id == playload['sub']).one_or_none()
+                    return jsonify({
+                        "success": True,
+                        "customer": [query_customer.format()]
+                    })
+            else:  # else if user does not have record create a record of the user
+                # assign_role(request.json.get('role'))
+                # IMPORTANT customer user role needs to be assigned here using auth management api
+                new_customer = Customer(
+                    name=request.json.get('name'),
+                    email=request.json.get('email'),
+                    auth_user_id=request.json.get('authuid')
+
+                )
+                # registering using frontend, complete the user info from playload
+                Customer.insert(new_customer)
+
+                query_customer = Customer.query.filter(Customer.auth_user_id == playload['sub']).one_or_none()
+                return jsonify({
+                    "success": True,
+                    "customer": [query_customer.format()]
+                })
+
+        except Exception as e:
+            print(e)
+            abort(400)
+
+    @app.route('/artists', methods=['GET'])
+    def get_artists():
+        try:
+            artists = Artist.query.all()
+            formatted_artist = [artist.format() for artist in artists]
+            print('this is it', formatted_artist)
+            return jsonify({
+                "success": True,
+                "artist": [formatted_artist]
+            })
+        except Exception as e:
+            print(e)
+            abort(404)
+    @app.route('/customer', methods=['GET'])
+    def get_customer():
+        try:
+            customers = Customer.query.all()
+            formatted_customer = [customer.format() for customer in customers]
+            print('this is it',formatted_customer)
+            return jsonify({
+                "success": True,
+                "customer": [formatted_customer]
+            })
+        except Exception as e:
+            print(e)
+            abort(404)
 
 
-        return jsonify({
-            "success":True,
-            "Stylist":stylists
-        })
 
 
+    @app.route('/customer/<int:id>', methods=['PATCH'])
+    @requires_auth('patch:customer')
+    def edit_customer(payload, id):
+        try:
+            customer = Customer.query.filter(Customer.id == id).one_or_none()
+            print(customer)
+            if not customer:
+                abort(404)
+            customer.name = request.json.get('name')
+            customer.email = request.json.get('email')
+            Customer.update(customer)
+            updated_customer = Customer.query.filter(Customer.id == id).one_or_none()
 
-
-
-    @app.route('/rating', methods=['POST'])
-    #@requires_auth('post:stylists')
-    def rate_stylists():
-
-        print(request.json.get('comment'))
-        new_rating = Rating(rate=request.json.get('rate'), stylist_id=request.json.get('stylist_id'),comment=request.json.get('comment') )
-        Rating.insert(new_rating)
-        ratings = [rate.format() for rate in Rating.query.all()]
-
-        return jsonify({
-            "success": True,
-            "ratings": ratings
-        })
-
+            return jsonify({
+                "success": True,
+                "customer": [updated_customer.format()]
+            })
+        except Exception as e:
+            print(e)
+            abort(401)
 
     '''
     @TODO implement endpoint
@@ -120,10 +321,27 @@ def create_app(test_config=None):  # create app
             or appropriate status code indicating reason for failure
     '''
 
-    @app.route('/stylists/<int:id>', methods=['PATCH'])
-    #@requires_auth('patch:stylists')
-    def edit_stylist(payload, id):
-       return 'None'
+    @app.route('/artists/<int:id>', methods=['PATCH'])
+    @requires_auth('patch:artist')
+    def edit_artist(payload, id):
+        try:
+            artist = Artist.query.filter(Artist.id == id).one_or_none()
+            print(artist)
+            if not artist:
+                abort(404)
+            artist.name = request.json.get('name')
+            artist.speciality = request.json.get('speciality')
+            artist.image_link = request.json.get('image_link')
+            Artist.update(artist)
+            updated_artist = Artist.query.filter(Artist.id == id).one_or_none()
+
+            return jsonify({
+                "success": True,
+                "artist": [updated_artist.format()]
+            })
+        except Exception as e:
+            print(e)
+            abort(401)
 
     '''
     @TODO implement endpoint
@@ -136,15 +354,100 @@ def create_app(test_config=None):  # create app
             or appropriate status code indicating reason for failure
     '''
 
-    @app.route('/stylists/<int:id>', methods=['DELETE'])
-    #@requires_auth('delete:stylists')
-    def delete_stylist(playload, id):
-        return 'None'
+    @app.route('/artist/<int:id>', methods=['DELETE'])
+    @requires_auth('delete:artist')
+    def delete_artist(playload, id):
+        try:
+            artist = Artist.query.filter(Artist.id == id).one_or_none()
+            if not artist:
+                abort(404)
+            else:
+                artist.delete()
+                return jsonify({
+                    "success": True,
+                    "deleted": id,
+                })
+        except Exception as e:
+            print(e)
+            abort(401)
+
+    @app.route('/customer/<int:id>', methods=['DELETE'])
+    @requires_auth('delete:customer')
+    def delete_customer(playload, id):
+        try:
+            customer = Customer.query.filter(Customer.id == id).one_or_none()
+            if not customer:
+                abort(404)
+            else:
+                customer.delete()
+                return jsonify({
+                    "success": True,
+                    "deleted": id,
+                })
+        except Exception as e:
+            print(e)
+            abort(401)
+
+    @app.route('/review', methods=['POST'])
+    @requires_auth('post:review')
+    def rate_artist(playload):
+        print(playload)
+        print(request.json.get('comment'))
+        print(playload['sub'])
+        new_rating = Rating(rate=request.json.get('rate'), customer_id=playload['sub'],
+                            stylist_id=request.json.get('stylist_id'), comment=request.json.get('comment'))
+        Rating.insert(new_rating)
+        ratings = [rate.format() for rate in Rating.query.all()]
+
+        return jsonify({
+            "success": True,
+            "ratings": ratings
+        })
+    
+    
+    @app.route('/review/<int:id>', methods=['PATCH'])
+    @requires_auth('patch:review')
+    def edit_review(payload, id):
+        try:
+            review = Rating.query.filter(Rating.id == id).one_or_none()
+            print(review)
+            if not review:
+                abort(404)
+            review.rate = request.json.get('rate')
+            review.comment = request.json.get('comment')
+            Rating.update(review)
+            updated_review = Rating.query.filter(Rating.id == id).one_or_none()
+
+            return jsonify({
+                "success": True,
+                "artist": [updated_review.format()]
+            })
+        except Exception as e:
+            print(e)
+            abort(401)
+    
+    @app.route('/review/<int:id>', methods=['DELETE'])
+    @requires_auth('delete:review')
+    def delete_review(playload, id):
+        try:
+            review = Rating.query.filter(Rating.id == id).one_or_none()
+            if not review:
+                abort(404)
+            else:
+                review.delete()
+                return jsonify({
+                    "success": True,
+                    "deleted": id,
+                })
+        except Exception as e:
+            print(e)
+            abort(401)
 
     ## Error Handling
     '''
     Example error handling for unprocessable entity
     '''
+
     @app.errorhandler(422)
     def unprocessable(error):
         return jsonify({
@@ -168,6 +471,7 @@ def create_app(test_config=None):  # create app
             "error": 422,
             "message": "unprocessable"
         }), 422
+
     '''
     @TODO implement error handler for 404
         error handler should conform to general task above 
@@ -182,6 +486,7 @@ def create_app(test_config=None):  # create app
                         }), 404
 
     '''
+
     @app.errorhandler(404)
     def not_found(error):
         return jsonify({
@@ -189,7 +494,6 @@ def create_app(test_config=None):  # create app
             "error": 404,
             "message": "resource not found"
         }), 404
-
 
     @app.errorhandler(400)
     def bad_request(error):
@@ -215,26 +519,22 @@ def create_app(test_config=None):  # create app
             "message": "Internal Server Error"
         }), 500
 
-
-
-
-
     '''
     @TODO implement error handler for AuthError
         error handler should conform to general task above 
     '''
 
-    # @app.errorhandler(AuthError)
-    # def auth_error(error): # handle auth errors and returns it as json
-    #     print('tb')
-    #     print(error.status_code)
-    #     print(error.error)
-    #     return jsonify({
-    #         "success": False,
-    #         "error": error.status_code,
-    #         "message": error.error
-    #
-    #     }), error.status_code
+    @app.errorhandler(AuthError)
+    def auth_error(error):  # handle auth errors and returns it as json
+        print('tb')
+        print(error.status_code)
+        print(error.error)
+        return jsonify({
+            "success": False,
+            "error": error.status_code,
+            "message": error.error
+
+        }), error.status_code
 
     return app
 

@@ -4,8 +4,9 @@ from functools import wraps
 from jose import jwt
 from urllib.request import urlopen
 
-AUTH_USER = "EXAMPLE"
-AUTH0_DOMAIN = AUTH_USER+'.us.auth0.com'
+AUTH_USER = "falbellaihi1"
+
+AUTH0_DOMAIN = 'falbellaihi1.us.auth0.com'
 ALGORITHMS = ['RS256']
 API_AUDIENCE = 'beautyartists'
 
@@ -31,6 +32,7 @@ class AuthError(Exception):
     return the token part of the header
 '''
 def get_token_auth_header():
+
     if 'Authorization' not in request.headers:
         raise AuthError({
             'code': 'autorization_header_messing',
@@ -108,6 +110,7 @@ def check_permissions(permission, playload): #TODO BY TOMORROW ### DONE
 '''
 def verify_decode_jwt(token):
     #GET PUBLIC KKEY FROM 0AUTH
+    print(token)
     rsa_key ={}
     url = 'http://%s/.well-known/jwks.json' % (AUTH0_DOMAIN)
     json_url = urlopen(url)
@@ -132,7 +135,9 @@ def verify_decode_jwt(token):
                     issuer='https://' + AUTH0_DOMAIN + '/'
 
                 )
+                #print(playload)
                 return playload
+
             except jwt.ExpiredSignatureError:
                 raise AuthError({
                     'code': 'token_expired',
@@ -153,6 +158,10 @@ def verify_decode_jwt(token):
             'code': 'invalid_header',
             'description': 'Unable to find the appropriate key'
         }, 401)
+
+
+
+
 
 
 
@@ -180,3 +189,19 @@ def requires_auth(permission=''):
 
         return wrapper
     return requires_auth_decorator
+
+
+def is_authenticated():
+    def is_auth_decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            try:
+
+                token = get_token_auth_header()
+                playload = verify_decode_jwt(token)
+            except:
+                abort(401)
+            return f(playload, *args, **kwargs)
+
+        return wrapper
+    return is_auth_decorator
