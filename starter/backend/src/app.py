@@ -3,22 +3,25 @@ import os
 
 from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
-from models import setup_db, db_drop_and_create_all, Artist, Rating, db, Customer, create_db
-from auth.auth import AuthError, requires_auth, is_authenticated
+from .models import setup_db, db_drop_and_create_all, Artist, Rating, db, Customer, create_db
+from .auth.auth import AuthError, requires_auth, is_authenticated
 import http.client
 from sqlalchemy import *
+
 
 def create_app(test_config=None):  # create app
     app = Flask(__name__)
     setup_db(app)
     # CORS(app)
+    app.secret_key = os.environ.get('SECRET_KEY')
     CORS(app, resources={r"/api/*": {"origins": "*"}})
+
     '''
     @TODO uncomment the following line to initialize the datbase
     !! NOTE THIS WILL DROP ALL RECORDS AND START YOUR DB FROM SCRATCH
     !! NOTE THIS MUST BE UNCOMMENTED ON FIRST RUN
     '''
-    #db_drop_and_create_all()
+    # db_drop_and_create_all()
 
     create_db()
 
@@ -32,10 +35,9 @@ def create_app(test_config=None):  # create app
     ## HELPERS
 
     def management_api_token():  # retrieves management api token
-        print("trying..")
         try:
-            CLIENT_ID = os.environ.get('AUTH0_CLIENT_ID')
-            CLIENT_SEC = os.environ.get('AUTH0_CLIENT_SECRET')
+            CLIENT_ID = os.environ.get('CLIENT_ID')
+            CLIENT_SEC = os.environ.get('CLIENT_SEC')
             conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
             playload = {
                 "client_id": CLIENT_ID,
@@ -55,13 +57,15 @@ def create_app(test_config=None):  # create app
             return token
         except:
             abort(401)
+
     ####################################
 
+    def assign_role(role,
+                    uid):  # IMPORTANT WHEN USER SIGNS IN FIRST TIME, ROLE IS NOT IMPLEMENTED UNTIL SIGNS OUT AND SIGNS IN AGAIN!, FRONTEND HAS TO REJECT USER LOGIN IF NOT SUCCESSFUL HERE!
 
-    def assign_role(role, uid):  # IMPORTANT WHEN USER SIGNS IN FIRST TIME, ROLE IS NOT IMPLEMENTED UNTIL SIGNS OUT AND SIGNS IN AGAIN!, FRONTEND HAS TO REJECT USER LOGIN IF NOT SUCCESSFUL HERE!
-        print(role)
         auth = management_api_token()
-        headers = {'content-type': "application/json",'authorization': 'Bearer {}'.format(auth), 'cache-control': "no-cache"}
+        headers = {'content-type': "application/json", 'authorization': 'Bearer {}'.format(auth),
+                   'cache-control': "no-cache"}
         conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
         ########## read existing roles in auth0 ########
         conn.request("GET", "/api/v2/roles", headers=headers)
@@ -74,8 +78,8 @@ def create_app(test_config=None):  # create app
         user_roles_res = conn.getresponse();
         read_user_roles = user_roles_res.read()
         json_user_roles = json.loads(read_user_roles.decode("utf-8"))
-        if(len(json_user_roles) > 0):
-            print( ' you already have roles ----> ' ,json_user_roles)
+        if (len(json_user_roles) > 0):
+            print(' you already have roles ----> ', json_user_roles)
             conn.close()
         if (len(json_user_roles) == 0):
             print('no roles, creating one now')
@@ -85,14 +89,11 @@ def create_app(test_config=None):  # create app
                     payload = {
                         "roles": [existing_roles[i]['id']]
                     }
-                    conn.request("POST", "/api/v2/users/{}/roles".format(uid), json.dumps(payload) ,headers=headers)
+                    conn.request("POST", "/api/v2/users/{}/roles".format(uid), json.dumps(payload), headers=headers)
                     res = conn.getresponse()
                     data = res.read()
                     print(data.decode("utf-8"))
                     conn.close()
-
-
-
 
     '''
     @TODO implement endpoint     'DONE'
@@ -113,8 +114,6 @@ def create_app(test_config=None):  # create app
     @app.route("/")
     def home_view():
         return "<h1>Wlecome to Hairstylists reviews</h1>"
-
-
 
     '''
     @TODO implement endpoint      'DONE'
@@ -143,7 +142,7 @@ def create_app(test_config=None):  # create app
         try:
             get_artist = Artist.query.filter_by(email=request.json.get('email')).first()
             if (get_artist is not None):
-                print('existing user ',get_artist.format())
+                print('existing user ', get_artist.format())
                 return jsonify({
                     "success": True,
                     "artist": [get_artist.format()]
@@ -174,18 +173,16 @@ def create_app(test_config=None):  # create app
     @is_authenticated()
     def create_customer(playload):  # CUSTOMER ID NEEDS TO BE PASSED HERE,
         # IMPORTANT encrypt jwt in auth0 rule
-
-        print("role is ", request.json)
         try:
             print(type(request.json.get('email')))
-            get_customer = Customer.query.filter_by(email = request.json.get('email')).first()
+            get_customer = Customer.query.filter_by(email=request.json.get('email')).first()
 
-            if(get_customer is not None):
+            if (get_customer is not None):
                 print(get_customer)
                 return jsonify({
-                        "success": True,
-                        "customer": [get_customer.format()]
-                    })
+                    "success": True,
+                    "customer": [get_customer.format()]
+                })
 
             else:  # else if user does not have record create a record of the user
                 print('else')
@@ -198,7 +195,6 @@ def create_app(test_config=None):  # create app
                 # registering using frontend, complete the user info from playload
                 Customer.insert(new_customer)
                 assign_role(role='customer', uid=new_customer.auth_user_id)
-                print('role assigned')
                 query_customer = Customer.query.filter(Customer.id == new_customer.id).one_or_none()
                 return jsonify({
                     "success": True,
@@ -222,6 +218,7 @@ def create_app(test_config=None):  # create app
         except Exception as e:
             print(e)
             abort(404)
+
     @app.route('/customer', methods=['GET'])
     def get_customer():
         try:
@@ -234,9 +231,6 @@ def create_app(test_config=None):  # create app
         except Exception as e:
             print(e)
             abort(404)
-
-
-
 
     @app.route('/customer/<int:id>', methods=['PATCH'])
     @requires_auth('patch:customer')
@@ -303,40 +297,6 @@ def create_app(test_config=None):  # create app
             or appropriate status code indicating reason for failure
     '''
 
-    @app.route('/artist/<int:id>', methods=['DELETE'])
-    @requires_auth('delete:artist')
-    def delete_artist(playload, id):
-        try:
-            artist = Artist.query.filter(Artist.id == id).one_or_none()
-            if not artist:
-                abort(404)
-            else:
-                artist.delete()
-                return jsonify({
-                    "success": True,
-                    "deleted": id,
-                })
-        except Exception as e:
-            print(e)
-            abort(401)
-
-    @app.route('/customer/<int:id>', methods=['DELETE'])
-    @requires_auth('delete:customer')
-    def delete_customer(playload, id):
-        try:
-            customer = Customer.query.filter(Customer.id == id).one_or_none()
-            if not customer:
-                abort(404)
-            else:
-                customer.delete()
-                return jsonify({
-                    "success": True,
-                    "deleted": id,
-                })
-        except Exception as e:
-            print(e)
-            abort(401)
-
     @app.route('/review', methods=['POST'])
     @requires_auth('post:review')
     def rate_artist(playload):
@@ -358,13 +318,12 @@ def create_app(test_config=None):  # create app
             print(e)
             abort(404)
 
-
     @app.route('/review/<int:id>', methods=['PATCH'])
     @requires_auth('patch:review')
-    def edit_review(payload, id): # IMPORTANT user can edit only the comment created by the user not other users!
+    def edit_review(payload, id):  # IMPORTANT user can edit only the comment created by the user not other users!
         try:
             customer_name = payload['http://localhost:8100/info'][1]
-            print('customer editing   .... ',customer_name)
+            print('customer editing   .... ', customer_name)
             review = Rating.query.filter_by(id=id).join(Customer).filter_by(name=customer_name).first()
             artist = Artist.query.filter_by(id=request.json.get('artist_id')).one_or_none()
             if not review or not artist:
@@ -382,14 +341,69 @@ def create_app(test_config=None):  # create app
         except Exception as e:
             print(e)
             abort(404)
-    
+
+    @app.route('/artist/<int:id>', methods=['DELETE'])
+    @requires_auth('delete:customer')
+    def delete_artist(payload, id):
+        try:
+            artist_name = payload['http://localhost:8100/info'][1]
+            formatted_artist = Customer.query.filter_by(name=artist_name).one_or_none().format()
+
+            artist = Artist.query.filter(Artist.id == id).one_or_none()
+            print(artist)
+            if not artist:
+                abort(404)
+            if formatted_artist['id'] != id:
+                print('you cant delete other users\' profile')
+                abort(401)
+
+            else:
+                artist.delete()
+                return jsonify({
+                    "success": True,
+                    "deleted": id,
+                })
+        except Exception as e:
+            print(e)
+            abort(401)
+
+    @app.route('/customer/<int:id>', methods=['DELETE'])
+    @requires_auth('delete:customer')
+    def delete_customer(payload, id):
+        try:
+            customer_name = payload['http://localhost:8100/info'][1]
+            formatted_customer = Customer.query.filter_by(name=customer_name).one_or_none().format()
+            customer = Customer.query.filter(Customer.id == id).one_or_none()
+            if not customer:
+                abort(404)
+            if formatted_customer['id'] != id:
+                print('you cant delete other users\' profile')
+                abort(401)
+            else:
+                customer.delete()
+                return jsonify({
+                    "success": True,
+                    "deleted": id,
+                })
+        except Exception as e:
+            print(e)
+            abort(401)
+
     @app.route('/review/<int:id>', methods=['DELETE'])
     @requires_auth('delete:review')
-    def delete_review(playload, id):
+    def delete_review(payload, id):
         try:
-            review = Rating.query.filter(Rating.id == id).one_or_none()
+            customer_name = payload['http://localhost:8100/info'][1]
+            formatted_reviews = Rating.query.filter(Rating.id == id).one_or_none().format()
+            formatted_customer = Customer.query.filter_by(name=customer_name).one_or_none().format()
+            review = Rating.query.filter_by(id=id).join(Customer).filter_by(name=customer_name).first()
+
             if not review:
                 abort(404)
+            if (formatted_reviews['customer_id'] != formatted_customer['id']):
+                # a user can only delete the rate they created
+                abort(401)
+
             else:
                 review.delete()
                 return jsonify({
