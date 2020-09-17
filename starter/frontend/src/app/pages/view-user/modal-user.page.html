@@ -1,0 +1,47 @@
+<ion-header>
+    <ion-toolbar>
+        <ion-title>Please select options</ion-title>
+    </ion-toolbar>
+        <ion-button (click)="closeModal()">
+        <ion-icon slot="icon-only" name="close"></ion-icon>
+    </ion-button>
+</ion-header>
+
+<ion-content>
+
+    <ion-list>
+        <ion-radio-group>
+            <ion-list-header>
+                <ion-label>Login</ion-label>
+            </ion-list-header>
+
+            <ion-item>
+                <ion-label>Customer</ion-label>
+                <ion-radio (ionFocus)="onFocuscustomer()" slot="start" value="biff" checked></ion-radio>
+            </ion-item>
+
+            <ion-item>
+                <ion-label>Artist</ion-label>
+                <ion-radio (ionFocus)="onFocusartist()" slot="start" value="griff"></ion-radio>
+            </ion-item>
+
+        </ion-radio-group>
+    </ion-list>
+
+
+    <ion-item *ngIf="artist">
+
+
+        <form (ngSubmit)="logForm()">
+
+            <ion-label>your speciality</ion-label>
+            <ion-input type="text" [(ngModel)]="speciality" name="speciality"></ion-input>
+            <ion-button [href]="loginURL" (click)="addArtist()">Login Artist</ion-button>
+        </form>
+    </ion-item>
+    <ion-item *ngIf="artist == false">
+        <ion-button [href]="loginURL" (click)="addCustomer()">Login customer</ion-button>
+
+    </ion-item>
+
+</ion-content>

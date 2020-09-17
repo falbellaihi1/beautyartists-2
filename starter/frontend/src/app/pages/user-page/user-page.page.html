@@ -1,0 +1,41 @@
+<ion-header>
+    <ion-toolbar>
+        <ion-title>My profile</ion-title>
+    </ion-toolbar>
+</ion-header>
+<ion-content *ngIf="!auth.token">
+    <ion-grid>
+        <ion-row>
+            <ion-button (click)="auth.openModal()">Log In </ion-button>
+
+
+        </ion-row>
+    </ion-grid>
+</ion-content>
+<ion-content *ngIf="auth.token">
+    <ion-button [href]="logoutURL" (click)=auth.logout()>logout</ion-button>
+    <ion-item>
+        <ion-label>Active JWT</ion-label>
+        <ion-textarea [ngModel]="auth.token" name="Active JWT"></ion-textarea>
+    </ion-item>
+
+    <ion-item>
+
+
+          <ion-thumbnail slot="start">
+      <ion-img [src]=""></ion-img>
+    </ion-thumbnail>
+        <ion-label>Name</ion-label>
+        <ion-textarea [ngModel]=""  name="username"></ion-textarea>
+
+    </ion-item>
+    <ion-item>
+        <ion-label>email</ion-label>
+    <ion-textarea [ngModel]=""  name="email"></ion-textarea>
+</ion-item>
+     <ion-item>
+         <ion-label>role</ion-label>
+    <ion-textarea [ngModel]=""  name="username"></ion-textarea>
+</ion-item>
+
+</ion-content>
