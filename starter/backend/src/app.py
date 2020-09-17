@@ -3,10 +3,10 @@ import os
 
 from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
-from backend.src.models import setup_db, db_drop_and_create_all, Artist, Rating, db, Customer, create_db
-from .auth.auth import AuthError, requires_auth, is_authenticated
+from models import setup_db, db_drop_and_create_all, Artist, Rating, db, Customer, create_db
+from auth.auth import AuthError, requires_auth, is_authenticated
 import http.client
-
+from sqlalchemy import *
 
 def create_app(test_config=None):  # create app
     app = Flask(__name__)
@@ -33,26 +33,31 @@ def create_app(test_config=None):  # create app
 
     def management_api_token():  # retrieves management api token
         print("trying..")
-        CLIENT_ID = os.environ.get('AUTH0_CLIENT_ID')
-        CLIENT_SEC = os.environ.get('AUTH0_CLIENT_SECRET')
-        conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
-        playload = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SEC,
-            "audience": "https://falbellaihi1.us.auth0.com/api/v2/",
-            "grant_type": "client_credentials"
-        }
-        playload_json = json.dumps(playload)
-        # print(playload_json)
-        headers = {'content-type': "application/json"}
-        conn.request("POST", "/oauth/token", playload_json, headers)
-        res = conn.getresponse()
-        data = res.read()
-        data_loads = json.loads(data)
-        token = data_loads['access_token']
-        return token
+        try:
+            CLIENT_ID = os.environ.get('AUTH0_CLIENT_ID')
+            CLIENT_SEC = os.environ.get('AUTH0_CLIENT_SECRET')
+            conn = http.client.HTTPSConnection("falbellaihi1.us.auth0.com")
+            playload = {
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SEC,
+                "audience": "https://falbellaihi1.us.auth0.com/api/v2/",
+                "grant_type": "client_credentials"
+            }
+            playload_json = json.dumps(playload)
+            # print(playload_json)
+            headers = {'content-type': "application/json"}
+            conn.request("POST", "/oauth/token", playload_json, headers)
+            res = conn.getresponse()
+            data = res.read()
+            data_loads = json.loads(data)
+            token = data_loads['access_token']
+            return token
+        except:
+            abort(404)
     def retrieve_customers():
-        return [customer.format() for customer in Customer.query.all()]
+        customers = Customer.query.all()
+        for customer in customers:
+            return customer.format()
 
     def retrieve_artists():
         return [artist.format() for artist in Artist.query.all()]
@@ -60,7 +65,7 @@ def create_app(test_config=None):  # create app
     ####################################
 
 
-    def assign_role(role, uid):  # TODO GET ROLE ID FROM AUTH0 TO ASSIGN IT TO USER
+    def assign_role(role, uid):  # IMPORTANT WHEN USER SIGNS IN FIRST TIME, ROLE IS NOT IMPLEMENTED UNTIL SIGNS OUT AND SIGNS IN AGAIN!, FRONTEND HAS TO REJECT USER LOGIN IF NOT SUCCESSFUL HERE!
         print(role)
         auth = management_api_token()
         headers = {'content-type': "application/json",'authorization': 'Bearer {}'.format(auth), 'cache-control': "no-cache"}
@@ -78,6 +83,7 @@ def create_app(test_config=None):  # create app
         json_user_roles = json.loads(read_user_roles.decode("utf-8"))
         if(len(json_user_roles) > 0):
             print( ' you already have roles ----> ' ,json_user_roles)
+            conn.close()
         if (len(json_user_roles) == 0):
             print('no roles, creating one now')
             for i in range(len(existing_roles)):
@@ -90,6 +96,7 @@ def create_app(test_config=None):  # create app
                     res = conn.getresponse()
                     data = res.read()
                     print(data.decode("utf-8"))
+                    conn.close()
 
 
 
@@ -140,20 +147,14 @@ def create_app(test_config=None):  # create app
     # @requires_auth('post:stylists')
     @is_authenticated()
     def create_artist(playload):
-        get_artist = retrieve_artists()
-        if ((request.json.get('speciality') == '' or request.json.get('name') == '' and request.json.get(
-                'speciality') == '' and request.json.get('image_link') == '')):  # nothing passed abort 422
-            abort(422)
-
         try:
-            if (len(get_artist) > 0):
-                if get_artist[0]['email'] == request.json.get('email') or get_artist[0]['auth_user_id'] == request.json.get('authuid'):
-                    #IMPORTANT if user already has record in db return user info json
-                    query_artists = Artist.query.filter(Artist.auth_user_id == request.json.get('email')).one_or_none()
-                    return jsonify({
-                        "success":True,
-                        "artist":query_artists.format()
-                    })
+            get_artist = Artist.query.filter_by(email=request.json.get('email')).first()
+            if (get_artist is not None):
+                print('existing user ',get_artist.format())
+                return jsonify({
+                    "success": True,
+                    "artist": [get_artist.format()]
+                })
 
             else:  # else if user does not have record create a record of the user
                 # assign_role(request.json.get('role'))
@@ -164,9 +165,9 @@ def create_app(test_config=None):  # create app
                     speciality=request.json.get('speciality'))
                 Artist.insert(new_artist)
 
-            query_artists = Artist.query.filter(Artist.auth_user_id == playload['sub']).one_or_none()
-            print(query_artists)
-            assign_role('artist', request.json.get('authuid'))
+            query_artists = Artist.query.filter(Artist.id == new_artist.id).one_or_none()
+            print('new user ', query_artists.format(), playload['sub'])
+            assign_role('artist', playload['sub'])
             return jsonify({
                 "success": True,
                 "artist": [query_artists.format()]
@@ -174,7 +175,7 @@ def create_app(test_config=None):  # create app
 
         except Exception as e:
             print(e)
-            abort(400)
+            abort(401)
 
     @app.route('/customer', methods=['POST'])
     @is_authenticated()
@@ -182,18 +183,19 @@ def create_app(test_config=None):  # create app
         # IMPORTANT encrypt jwt in auth0 rule
 
         print("role is ", request.json)
-        get_customer = retrieve_customers()
         try:
-            if (len(get_customer) > 0):  # check if user already exists in db
+            print(type(request.json.get('email')))
+            get_customer = Customer.query.filter_by(email = request.json.get('email')).first()
 
-                if get_customer[0]['email'] == request.json.get('email') or get_customer[0]['auth_user_id'] == request.json.get('authuid'):
-                    # if user already has record in db
-                    query_customer = Customer.query.filter(Customer.auth_user_id == playload['sub']).one_or_none()
-                    return jsonify({
+            if(get_customer is not None):
+                print(get_customer)
+                return jsonify({
                         "success": True,
-                        "customer": [query_customer.format()]
+                        "customer": [get_customer.format()]
                     })
+
             else:  # else if user does not have record create a record of the user
+                print('else')
                 new_customer = Customer(
                     name=request.json.get('name'),
                     email=request.json.get('email'),
@@ -203,6 +205,7 @@ def create_app(test_config=None):  # create app
                 # registering using frontend, complete the user info from playload
                 Customer.insert(new_customer)
                 assign_role(role='customer', uid=new_customer.auth_user_id)
+                print('role assigned')
                 query_customer = Customer.query.filter(Customer.id == new_customer.id).one_or_none()
                 return jsonify({
                     "success": True,
@@ -211,14 +214,14 @@ def create_app(test_config=None):  # create app
 
         except Exception as e:
             print(e)
-            abort(400)
+            abort(401)
 
     @app.route('/artists', methods=['GET'])
     def get_artists():
         try:
             artists = Artist.query.all()
             formatted_artist = [artist.format() for artist in artists]
-            print('this is it', formatted_artist)
+
             return jsonify({
                 "success": True,
                 "artist": [formatted_artist]
@@ -231,7 +234,6 @@ def create_app(test_config=None):  # create app
         try:
             customers = Customer.query.all()
             formatted_customer = [customer.format() for customer in customers]
-            print('this is it',formatted_customer)
             return jsonify({
                 "success": True,
                 "customer": [formatted_customer]
@@ -248,7 +250,6 @@ def create_app(test_config=None):  # create app
     def edit_customer(payload, id):
         try:
             customer = Customer.query.filter(Customer.id == id).one_or_none()
-            print(customer)
             if not customer:
                 abort(404)
             customer.name = request.json.get('name')
@@ -346,30 +347,38 @@ def create_app(test_config=None):  # create app
     @app.route('/review', methods=['POST'])
     @requires_auth('post:review')
     def rate_artist(playload):
-        print(playload)
-        print(request.json.get('comment'))
-        print(playload['sub'])
-        new_rating = Rating(rate=request.json.get('rate'), customer_id=playload['sub'],
-                            stylist_id=request.json.get('stylist_id'), comment=request.json.get('comment'))
-        Rating.insert(new_rating)
-        ratings = [rate.format() for rate in Rating.query.all()]
+        try:
+            customer_rating = Customer.query.filter(Customer.auth_user_id == playload['sub']).one_or_none()
+            artist_rating = Artist.query.filter(Artist.id == request.json.get('artist_id')).one_or_none()
+            if not artist_rating:
+                abort(404)
+            new_rating = Rating(rate=request.json.get('rate'), artist_id=request.json.get('artist_id'),
+                                comment=request.json.get('comment'), customer_id=customer_rating.id)
+            Rating.insert(new_rating)
+            ratings = [rate.format() for rate in Rating.query.all()]
+            print(ratings)
+            return jsonify({
+                "success": True,
+                "ratings": ratings
+            })
+        except Exception as e:
+            print(e)
+            abort(404)
 
-        return jsonify({
-            "success": True,
-            "ratings": ratings
-        })
-    
-    
+
     @app.route('/review/<int:id>', methods=['PATCH'])
     @requires_auth('patch:review')
-    def edit_review(payload, id):
+    def edit_review(payload, id): # IMPORTANT user can edit only the comment created by the user not other users!
         try:
-            review = Rating.query.filter(Rating.id == id).one_or_none()
-            print(review)
-            if not review:
+            customer_name = payload['http://localhost:8100/info'][1]
+            print('customer editing   .... ',customer_name)
+            review = Rating.query.filter_by(id=id).join(Customer).filter_by(name=customer_name).first()
+            artist = Artist.query.filter_by(id=request.json.get('artist_id')).one_or_none()
+            if not review or not artist:
                 abort(404)
             review.rate = request.json.get('rate')
             review.comment = request.json.get('comment')
+            review.artist_id = request.json.get('artist_id')
             Rating.update(review)
             updated_review = Rating.query.filter(Rating.id == id).one_or_none()
 
@@ -379,7 +388,7 @@ def create_app(test_config=None):  # create app
             })
         except Exception as e:
             print(e)
-            abort(401)
+            abort(404)
     
     @app.route('/review/<int:id>', methods=['DELETE'])
     @requires_auth('delete:review')

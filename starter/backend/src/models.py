@@ -35,14 +35,14 @@ def create_db():
     db.create_all()
 
 class Artist(db.Model):
-    __tablename__ = 'stylist'
+    __tablename__ = 'artist'
     id = Column(Integer, primary_key=True)
     name = Column(String)
     speciality = Column(String(120))
     image_link = Column(String(500))
     auth_user_id = Column(String)
     email = Column(String)
-    rating = db.relationship('Rating', backref='stylist', cascade="all, delete, delete-orphan",lazy=True)
+    rating = db.relationship('Rating', backref='artist', cascade="all, delete, delete-orphan",lazy=True)
     def __init__(self, name, email, speciality='', auth_user_id=''):
         self.name = name
         self.speciality = speciality
@@ -70,7 +70,7 @@ class Artist(db.Model):
         }
 
     def __repr__(self):
-        return f'<Stylist {self.name}, {self.auth_user_id}>'
+        return f' artist {self.name}, {self.id}, {self.speciality}, {self.email}>'
 
 #
 class Customer(db.Model):
@@ -79,6 +79,7 @@ class Customer(db.Model):
     auth_user_id = Column(String)
     name = Column(String)
     email = Column(String)
+    rating = db.relationship('Rating', backref='customer', cascade="all, delete, delete-orphan", lazy=True)
 
     def __init__(self, name, email, auth_user_id=''):
         self.auth_user_id = auth_user_id
@@ -113,15 +114,15 @@ class Rating(db.Model):
 
     id = Column(Integer, primary_key=True)
     rate = Column(Integer)
-    stylist_id = Column(Integer, ForeignKey('stylist.id'))
-    customer_id = Column(String) # get it from auth0
+    artist_id = Column(Integer, ForeignKey('artist.id'))
+    customer_id = Column(Integer, ForeignKey('customer.id'))
     comment = Column(String(255))
 
 
-    def __init__(self, rate, stylist_id, customer_id, comment):
+    def __init__(self, rate, comment, artist_id, customer_id):
         self.rate = rate
-        self.stylist_id = stylist_id
         self.customer_id = customer_id
+        self.artist_id = artist_id
         self.comment = comment
 
     def insert(self):
@@ -139,10 +140,10 @@ class Rating(db.Model):
         return {
             'id': self.id,
             'rate': self.rate,
-            'stylist_id': self.stylist_id,
+            'artist_id': self.artist_id,
             'customer_id': self.customer_id,
             'comment':self.comment
         }
 
     def __repr__(self):
-        return f'<id: {self.id}, rate: {self.rate}, comment:{self.comment} rated by id: {self.customer_id} stylist id {self.stylist_id}>'
+        return f'<id: {self.id}, rate: {self.rate}, comment:{self.comment} rated by id: {self.customer_id} artist id {self.artist_id}>'
